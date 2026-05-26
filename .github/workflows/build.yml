@@ -27,7 +27,7 @@ jobs:
         run: |
           mkdir -p android-app/gradle/wrapper
           curl -fsSL -o android-app/gradle/wrapper/gradle-wrapper.jar \
-            https://github.com/gradle/gradle/raw/REL_8_7/gradle/wrapper/gradle-wrapper.jar
+            https://github.com/gradle/gradle/raw/v8.7.0/gradle/wrapper/gradle-wrapper.jar
 
       # 4. gradlew に実行権限を付与
       - name: gradlew に実行権限を付与
