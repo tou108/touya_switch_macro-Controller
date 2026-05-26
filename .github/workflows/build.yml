@@ -1,35 +1,34 @@
 name: Android APK Build
 
-# ─── トリガー設定 ─────────────────────────────────────────
-# mainブランチにpushしたとき OR 手動実行ボタンを押したとき
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:   # ← これが「手動実行ボタン」になる！
+  workflow_dispatch:
 
-# ─── ビルドジョブ ─────────────────────────────────────────
 jobs:
   build:
-    name: Build APK
-    runs-on: ubuntu-latest   # GitHubのサーバーで実行
+    name: APKをビルドする
+    runs-on: ubuntu-latest
 
     steps:
       # 1. コードをチェックアウト
       - name: リポジトリをチェックアウト
         uses: actions/checkout@v4
 
-      # 2. Java 17をセットアップ（Android Gradle に必要）
+      # 2. Java 17 セットアップ
       - name: Java 17 セットアップ
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 3. Android SDK をセットアップ
-      - name: Android SDK セットアップ
-        uses: android-actions/setup-android@v3
+      # 3. Gradle 8.7 を直接インストール（wrapper.jarが不要になる）
+      - name: Gradle 8.7 セットアップ
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.7"
 
-      # 4. Gradleのキャッシュ（2回目以降を高速化）
+      # 4. Gradle キャッシュ
       - name: Gradle キャッシュ
         uses: actions/cache@v4
         with:
@@ -39,25 +38,20 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*', '**/libs.versions.toml') }}
           restore-keys: gradle-
 
-      # 5. Gradleに実行権限を付与
-      - name: Gradlewに実行権限を付与
-        run: chmod +x android-app/gradlew
-        working-directory: ${{ github.workspace }}
-
-      # 6. デバッグAPKをビルド
+      # 5. Debug APK をビルド（gradlew ではなく gradle コマンドを直接使用）
       - name: Debug APK をビルド
-        run: ./gradlew assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --stacktrace
         working-directory: android-app
 
-      # 7. ビルドされたAPKをアーティファクトとして保存
+      # 6. APK をアーティファクトとして保存
       - name: APK をアップロード
         uses: actions/upload-artifact@v4
         with:
           name: nx_switch_macro_debug
           path: android-app/app/build/outputs/apk/debug/*.apk
-          retention-days: 30   # 30日間保存
+          retention-days: 30
 
-      # 8. Releaseタグが付いたときは自動でリリースも作成
+      # 7. タグ付きpushのとき自動でGitHub Releaseを作成
       - name: GitHub Release を作成
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -65,12 +59,7 @@ jobs:
           files: android-app/app/build/outputs/apk/debug/*.apk
           name: nx_switch_マクロ ${{ github.ref_name }}
           body: |
-            ## nx_switch_マクロ ${{ github.ref_name }}
-
-            ### インストール方法
+            ## インストール方法
             1. `nx_switch_macro_debug.apk` をダウンロード
             2. Androidの「提供元不明のアプリ」を許可
             3. APKをタップしてインストール
-
-            ### 変更点
-            ${{ github.event.head_commit.message }}
