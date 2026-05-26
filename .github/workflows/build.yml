@@ -3,7 +3,7 @@ name: Android APK Build
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:
+  workflow_dispatch:   # ← Actionsタブに「手動実行」ボタンが出る
 
 jobs:
   build:
@@ -22,13 +22,18 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 3. Gradle 8.7 を直接インストール（wrapper.jarが不要になる）
-      - name: Gradle 8.7 セットアップ
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: "8.7"
+      # 3. gradle-wrapper.jar をダウンロード（バイナリなのでGitに含められない）
+      - name: gradle-wrapper.jar をダウンロード
+        run: |
+          mkdir -p android-app/gradle/wrapper
+          curl -fsSL -o android-app/gradle/wrapper/gradle-wrapper.jar \
+            https://github.com/gradle/gradle/raw/v8.7.0/gradle/wrapper/gradle-wrapper.jar
 
-      # 4. Gradle キャッシュ
+      # 4. gradlew に実行権限を付与
+      - name: gradlew に実行権限を付与
+        run: chmod +x android-app/gradlew
+
+      # 5. Gradle キャッシュ（2回目以降を高速化）
       - name: Gradle キャッシュ
         uses: actions/cache@v4
         with:
@@ -38,12 +43,12 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*', '**/libs.versions.toml') }}
           restore-keys: gradle-
 
-      # 5. Debug APK をビルド（gradlew ではなく gradle コマンドを直接使用）
+      # 6. Debug APK をビルド
       - name: Debug APK をビルド
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
         working-directory: android-app
 
-      # 6. APK をアーティファクトとして保存
+      # 7. APK をアーティファクトとして保存（Actionsページからダウンロード可能）
       - name: APK をアップロード
         uses: actions/upload-artifact@v4
         with:
@@ -51,7 +56,7 @@ jobs:
           path: android-app/app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      # 7. タグ付きpushのとき自動でGitHub Releaseを作成
+      # 8. タグ付きpushのとき自動でGitHub Releaseを作成
       - name: GitHub Release を作成
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
