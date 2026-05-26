@@ -1,71 +1,23 @@
-plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
-}
-
-android {
-    namespace = "com.tou108.nxswitch"
-    compileSdk = 35
-
-    defaultConfig {
-        applicationId = "com.tou108.nxswitch"
-        minSdk = 30          // Android 11以上（UVC対応）
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+buildscript {
+    ext.kotlin_version = '1.9.10'
+    repositories {
+        google()
+        mavenCentral()
     }
-
-    buildTypes {
-        release {
-            minifyEnabled = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
-    buildFeatures {
-        compose = true
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.4'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 
-dependencies {
-    // Jetpack Compose BOM
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
 
-    // Navigation
-    implementation(libs.androidx.navigation.compose)
-
-    // WebSocket（OkHttp）
-    implementation(libs.okhttp)
-
-    // JSON
-    implementation(libs.gson)
-
-    // ML Kit — 画像認識
-    implementation(libs.mlkit.image.labeling)
-    implementation(libs.mlkit.object.detection)
-
-    // Coroutines
-    implementation(libs.kotlinx.coroutines.android)
-
-    debugImplementation(libs.androidx.ui.tooling)
+task clean(type: Delete) {
+    delete rootProject.buildDir
 }
