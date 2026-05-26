@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">nx_switch_マクロ</string>
+
+    <!-- 接続状態 -->
+    <string name="status_connected">接続済み</string>
+    <string name="status_disconnected">未接続</string>
+    <string name="status_connecting">接続中…</string>
+    <string name="status_error">エラー</string>
+
+    <!-- ボタン -->
+    <string name="btn_connect">接続</string>
+    <string name="btn_disconnect">切断</string>
+    <string name="btn_rec_start">録画開始</string>
+    <string name="btn_rec_stop">録画停止・保存</string>
+    <string name="btn_play">再生</string>
+    <string name="btn_stop">停止</string>
+    <string name="btn_delete">削除</string>
+    <string name="btn_cancel">キャンセル</string>
+    <string name="btn_save">保存</string>
+
+    <!-- マクロ -->
+    <string name="macro_title">マクロ</string>
+    <string name="macro_name_hint">マクロ名</string>
+    <string name="macro_save_title">マクロを保存</string>
+    <string name="macro_empty">マクロなし</string>
+    <string name="macro_saved">保存しました</string>
+
+    <!-- キャプチャー -->
+    <string name="capture_placeholder">キャプチャーカードを接続してください</string>
+    <string name="capture_connecting">キャプチャー接続中…</string>
+
+    <!-- エラーメッセージ -->
+    <string name="err_esp32_not_found">ESP32が見つかりません\nWiFi「NX_Switch_Macro」に接続してください</string>
+    <string name="err_switch_not_paired">SwitchのBT設定でペアリングしてください</string>
+    <string name="err_no_usb">USBキャプチャーカードを接続してください</string>
+
+    <!-- 免責事項 -->
+    <string name="disclaimer">本アプリは任天堂株式会社の非公式アプリです</string>
+</resources>

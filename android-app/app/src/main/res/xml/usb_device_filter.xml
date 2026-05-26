@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  usb_device_filter.xml
+  UVC対応キャプチャーカードを自動検出するフィルター
+  bDeviceClass=0xEF はマルチインターフェースデバイス（UVCを含む）
+-->
+<resources>
+    <!-- UVC デバイス（Video Class） -->
+    <usb-device class="0xEF" subclass="0x02" protocol="0x01" />
+
+    <!-- MS2130 チップ（よく使われるキャプチャーカード） -->
+    <usb-device vendor-id="0x534D" product-id="0x2130" />
+
+    <!-- MS2109 チップ（旧世代キャプチャーカード） -->
+    <usb-device vendor-id="0x534D" product-id="0x2109" />
+
+    <!-- MACROSILICON 汎用 -->
+    <usb-device vendor-id="0x534D" />
+</resources>
