@@ -18,7 +18,7 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled = true
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -41,6 +41,9 @@ android {
 }
 
 dependencies {
+    // AppCompat（テーマ対応に必要）
+    implementation("androidx.appcompat:appcompat:1.7.0")
+
     // Jetpack Compose BOM
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
