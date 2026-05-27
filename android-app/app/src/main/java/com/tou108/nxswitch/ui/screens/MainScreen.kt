@@ -1,11 +1,11 @@
 package com.tou108.nxswitch.ui.screens
 
-// ============================================================
-//  MainScreen.kt
-//  メイン画面（コントローラーUI + 状態表示）
-// ============================================================
-
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,7 +14,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,156 +25,246 @@ import com.tou108.nxswitch.controller.Button
 import com.tou108.nxswitch.controller.Hat
 import com.tou108.nxswitch.macro.MacroStatus
 import com.tou108.nxswitch.network.ConnectionState
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 // ─── カラー定義 ───────────────────────────────────────────
-private val SwitchGray   = Color(0xFF2D2D2D)
-private val SwitchDark   = Color(0xFF1A1A1A)
-private val BtnA         = Color(0xFFE02020)  // 赤
-private val BtnB         = Color(0xFFFFDD00)  // 黄
-private val BtnX         = Color(0xFF2060E0)  // 青
-private val BtnY         = Color(0xFF20A020)  // 緑
-private val BtnGray      = Color(0xFF505050)
-private val Connected    = Color(0xFF00E676)
-private val Disconnected = Color(0xFFFF1744)
-private val Recording    = Color(0xFFFF6D00)
+private val BG       = Color(0xFF0F0F0F)
+private val PANEL    = Color(0xFF1C1C1C)
+private val GRAY     = Color(0xFF383838)
+private val BTN_A    = Color(0xFFE53935)
+private val BTN_B    = Color(0xFFFFD600)
+private val BTN_X    = Color(0xFF1E88E5)
+private val BTN_Y    = Color(0xFF43A047)
+private val GREEN    = Color(0xFF00E676)
+private val RED      = Color(0xFFFF1744)
+private val ORANGE   = Color(0xFFFF6D00)
+private val CYAN     = Color(0xFF00E5FF)
 
+// ─── メイン画面 ───────────────────────────────────────────
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
-    val connectionState by viewModel.connectionState.collectAsState()
-    val switchConnected by viewModel.switchConnected.collectAsState()
-    val macroStatus     by viewModel.macroStatus.collectAsState()
-    val savedMacros     by viewModel.savedMacros.collectAsState()
-    var showMacroDialog by remember { mutableStateOf(false) }
-    var macroSaveName   by remember { mutableStateOf("") }
+    val connState   by viewModel.connectionState.collectAsState()
+    val swConnected by viewModel.switchConnected.collectAsState()
+    val macroStatus by viewModel.macroStatus.collectAsState()
+    val macros      by viewModel.savedMacros.collectAsState()
+    var showSave    by remember { mutableStateOf(false) }
+    var saveName    by remember { mutableStateOf("") }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SwitchDark)
-            .padding(8.dp)
+    Column(
+        modifier = Modifier.fillMaxSize().background(BG)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // ── ステータスバー ─────────────────────────────────
+        StatusBar(connState, swConnected, macroStatus) { viewModel.connect() }
 
-            // ── ステータスバー ─────────────────────────────
-            StatusBar(
-                connectionState = connectionState,
-                switchConnected = switchConnected,
-                macroStatus     = macroStatus,
-                onConnect       = { viewModel.connect() }
-            )
+        // ── コントローラー本体 ────────────────────────────
+        // 3カラム構成: 左(weight=2) | 中央(weight=3) | 右(weight=2)
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // ── メインコントローラーレイアウト ─────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment     = Alignment.CenterVertically
+            // ════════ 左パネル ════════
+            Column(
+                modifier = Modifier.weight(2f).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceEvenly
             ) {
-                // 左側（十字キー + L/ZL + - + LS）
-                LeftPanel(viewModel)
-
-                // 中央（キャプチャー画面 / マクロパネル）
-                CenterPanel(
-                    viewModel       = viewModel,
-                    macroStatus     = macroStatus,
-                    savedMacros     = savedMacros,
-                    onSaveRequest   = { showMacroDialog = true }
-                )
-
-                // 右側（ABXYボタン + R/ZR + + + RS）
-                RightPanel(viewModel)
-            }
-        }
-
-        // マクロ名入力ダイアログ
-        if (showMacroDialog) {
-            AlertDialog(
-                onDismissRequest = { showMacroDialog = false },
-                title = { Text("マクロを保存") },
-                text = {
-                    OutlinedTextField(
-                        value = macroSaveName,
-                        onValueChange = { macroSaveName = it },
-                        label = { Text("マクロ名") },
-                        singleLine = true
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        if (macroSaveName.isNotBlank()) {
-                            viewModel.stopRecording(macroSaveName)
-                            showMacroDialog = false
-                            macroSaveName = ""
-                        }
-                    }) { Text("保存") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showMacroDialog = false }) {
-                        Text("キャンセル")
+                // ZL / L
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    NxBtn("ZL", GRAY, Modifier.weight(1f).height(34.dp)) { d ->
+                        if (d) viewModel.onButtonDown(Button.ZL) else viewModel.onButtonUp(Button.ZL)
+                    }
+                    NxBtn("L", GRAY, Modifier.weight(1f).height(34.dp)) { d ->
+                        if (d) viewModel.onButtonDown(Button.L) else viewModel.onButtonUp(Button.L)
                     }
                 }
-            )
+
+                // 左スティック
+                Box(contentAlignment = Alignment.Center) {
+                    Joystick(accentColor = CYAN) { x, y -> viewModel.onLeftStick(x, y) }
+                }
+
+                // 十字キー
+                DPad { viewModel.onHat(it) }
+
+                // − / LS
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    NxBtn("−", GRAY, Modifier.weight(1f).height(30.dp)) { d ->
+                        if (d) viewModel.onButtonDown(Button.MINUS) else viewModel.onButtonUp(Button.MINUS)
+                    }
+                    NxBtn("LS", GRAY, Modifier.weight(1f).height(30.dp)) { d ->
+                        if (d) viewModel.onButtonDown(Button.LS) else viewModel.onButtonUp(Button.LS)
+                    }
+                }
+            }
+
+            // ════════ 中央パネル ════════
+            Column(
+                modifier = Modifier.weight(3f).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                // キャプチャー画面
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF080808)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "📺 キャプチャー画面\nキャプチャーカードを接続してください",
+                        color = Color(0xFF3A3A3A),
+                        fontSize = 11.sp,
+                        lineHeight = 17.sp
+                    )
+                }
+
+                // マクロパネル
+                MacroPanel(macroStatus, macros,
+                    onStartRec = { viewModel.startRecording() },
+                    onStopRec  = { showSave = true },
+                    onPlay     = { viewModel.playMacro(it) },
+                    onStop     = { viewModel.stopMacro() },
+                    onDelete   = { viewModel.deleteMacro(it) }
+                )
+
+                // HOME / キャプチャボタン
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    NxBtn("HOME", Color(0xFF282828), Modifier.size(42.dp)) { d ->
+                        if (d) viewModel.onButtonDown(Button.HOME) else viewModel.onButtonUp(Button.HOME)
+                    }
+                    NxBtn("⏺", Color(0xFF282828), Modifier.size(42.dp)) { d ->
+                        if (d) viewModel.onButtonDown(Button.CAPTURE) else viewModel.onButtonUp(Button.CAPTURE)
+                    }
+                }
+            }
+
+            // ════════ 右パネル ════════
+            Column(
+                modifier = Modifier.weight(2f).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // R / ZR
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    NxBtn("R", GRAY, Modifier.weight(1f).height(34.dp)) { d ->
+                        if (d) viewModel.onButtonDown(Button.R) else viewModel.onButtonUp(Button.R)
+                    }
+                    NxBtn("ZR", GRAY, Modifier.weight(1f).height(34.dp)) { d ->
+                        if (d) viewModel.onButtonDown(Button.ZR) else viewModel.onButtonUp(Button.ZR)
+                    }
+                }
+
+                // 右スティック
+                Box(contentAlignment = Alignment.Center) {
+                    Joystick(accentColor = CYAN) { x, y -> viewModel.onRightStick(x, y) }
+                }
+
+                // ABXY
+                ABXYPad(viewModel)
+
+                // RS / +
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    NxBtn("RS", GRAY, Modifier.weight(1f).height(30.dp)) { d ->
+                        if (d) viewModel.onButtonDown(Button.RS) else viewModel.onButtonUp(Button.RS)
+                    }
+                    NxBtn("+", GRAY, Modifier.weight(1f).height(30.dp)) { d ->
+                        if (d) viewModel.onButtonDown(Button.PLUS) else viewModel.onButtonUp(Button.PLUS)
+                    }
+                }
+            }
         }
+    }
+
+    // マクロ保存ダイアログ
+    if (showSave) {
+        AlertDialog(
+            onDismissRequest = { showSave = false },
+            containerColor   = PANEL,
+            title = { Text("マクロを保存", color = Color.White) },
+            text  = {
+                OutlinedTextField(
+                    value = saveName,
+                    onValueChange = { saveName = it },
+                    label = { Text("マクロ名") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor   = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (saveName.isNotBlank()) {
+                        viewModel.stopRecording(saveName)
+                        showSave = false
+                        saveName = ""
+                    }
+                }) { Text("保存", color = CYAN) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSave = false }) {
+                    Text("キャンセル", color = Color.Gray)
+                }
+            }
+        )
     }
 }
 
 // ─── ステータスバー ───────────────────────────────────────
 @Composable
 fun StatusBar(
-    connectionState: ConnectionState,
-    switchConnected: Boolean,
-    macroStatus: MacroStatus,
+    conn: ConnectionState,
+    sw: Boolean,
+    macro: MacroStatus,
     onConnect: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(SwitchGray)
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .background(Color(0xFF181818))
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment     = Alignment.CenterVertically
     ) {
-        // アプリ名
-        Text(
-            text = "nx_switch_マクロ",
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp
-        )
-
+        Text("nx_switch_マクロ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment     = Alignment.CenterVertically
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ESP32接続状態
-            StatusDot(
-                label  = "ESP32",
-                active = connectionState == ConnectionState.CONNECTED
-            )
-
-            // Switch接続状態
-            StatusDot(
-                label  = "Switch",
-                active = switchConnected
-            )
-
-            // マクロ状態
-            if (macroStatus == MacroStatus.RECORDING) {
-                Text("● REC", color = Recording, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            } else if (macroStatus == MacroStatus.PLAYING) {
-                Text("▶ PLAY", color = Connected, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            StatusDot("ESP32",  conn == ConnectionState.CONNECTED)
+            StatusDot("Switch", sw)
+            when (macro) {
+                MacroStatus.RECORDING -> Text("● REC",  color = ORANGE, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                MacroStatus.PLAYING   -> Text("▶ PLAY", color = GREEN,  fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                else -> {}
             }
-
-            // 未接続時は再接続ボタン
-            if (connectionState == ConnectionState.DISCONNECTED ||
-                connectionState == ConnectionState.ERROR) {
-                TextButton(onClick = onConnect) {
-                    Text("接続", color = Color.Cyan, fontSize = 12.sp)
-                }
+            if (conn != ConnectionState.CONNECTED) {
+                TextButton(
+                    onClick = onConnect,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                ) { Text("接続", color = CYAN, fontSize = 12.sp) }
             }
         }
     }
@@ -180,334 +272,239 @@ fun StatusBar(
 
 @Composable
 fun StatusDot(label: String, active: Boolean) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(if (active) Connected else Disconnected)
-        )
-        Text(label, color = Color.White, fontSize = 11.sp)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Box(Modifier.size(9.dp).clip(CircleShape).background(if (active) GREEN else RED))
+        Text(label, color = Color.White, fontSize = 12.sp)
     }
 }
 
-// ─── 左パネル（十字キー + L/ZL） ─────────────────────────
+// ─── マクロパネル ─────────────────────────────────────────
 @Composable
-fun LeftPanel(viewModel: MainViewModel) {
-    Column(
-        modifier = Modifier.width(160.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // ZL / L ボタン
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SwitchButton("ZL", BtnGray, Modifier.weight(1f)) { down ->
-                if (down) viewModel.onButtonDown(Button.ZL)
-                else viewModel.onButtonUp(Button.ZL)
-            }
-            SwitchButton("L", BtnGray, Modifier.weight(1f)) { down ->
-                if (down) viewModel.onButtonDown(Button.L)
-                else viewModel.onButtonUp(Button.L)
-            }
-        }
-
-        // 十字キー
-        DPad(
-            onDirection = { hat -> viewModel.onHat(hat) }
-        )
-
-        // MINUS + LS
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SwitchButton("−", BtnGray, Modifier.weight(1f)) { down ->
-                if (down) viewModel.onButtonDown(Button.MINUS)
-                else viewModel.onButtonUp(Button.MINUS)
-            }
-            SwitchButton("LS", BtnGray, Modifier.weight(1f)) { down ->
-                if (down) viewModel.onButtonDown(Button.LS)
-                else viewModel.onButtonUp(Button.LS)
-            }
-        }
-    }
-}
-
-// ─── 右パネル（ABXY + R/ZR） ─────────────────────────────
-@Composable
-fun RightPanel(viewModel: MainViewModel) {
-    Column(
-        modifier = Modifier.width(160.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // ZR / R ボタン
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SwitchButton("R", BtnGray, Modifier.weight(1f)) { down ->
-                if (down) viewModel.onButtonDown(Button.R)
-                else viewModel.onButtonUp(Button.R)
-            }
-            SwitchButton("ZR", BtnGray, Modifier.weight(1f)) { down ->
-                if (down) viewModel.onButtonDown(Button.ZR)
-                else viewModel.onButtonUp(Button.ZR)
-            }
-        }
-
-        // ABXY ボタン
-        ABXYPad(viewModel)
-
-        // PLUS + RS
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SwitchButton("RS", BtnGray, Modifier.weight(1f)) { down ->
-                if (down) viewModel.onButtonDown(Button.RS)
-                else viewModel.onButtonUp(Button.RS)
-            }
-            SwitchButton("+", BtnGray, Modifier.weight(1f)) { down ->
-                if (down) viewModel.onButtonDown(Button.PLUS)
-                else viewModel.onButtonUp(Button.PLUS)
-            }
-        }
-    }
-}
-
-// ─── 中央パネル（画面 + マクロ） ─────────────────────────
-@Composable
-fun CenterPanel(
-    viewModel: MainViewModel,
-    macroStatus: MacroStatus,
-    savedMacros: List<String>,
-    onSaveRequest: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .width(240.dp)
-            .fillMaxHeight(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // キャプチャー画面プレースホルダー
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF111111)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "📺 キャプチャー画面\n（第2週実装予定）",
-                color = Color(0xFF666666),
-                fontSize = 12.sp
-            )
-        }
-
-        // マクロコントロール
-        MacroControls(
-            macroStatus = macroStatus,
-            savedMacros = savedMacros,
-            onStartRec  = { viewModel.startRecording() },
-            onStopRec   = onSaveRequest,
-            onPlay      = { name -> viewModel.playMacro(name) },
-            onStop      = { viewModel.stopMacro() },
-            onDelete    = { name -> viewModel.deleteMacro(name) },
-            viewModel   = viewModel
-        )
-
-        // HOME / CAPTURE ボタン
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            SwitchButton("HOME", Color(0xFF404040), Modifier.size(48.dp)) { down ->
-                if (down) viewModel.onButtonDown(Button.HOME)
-                else viewModel.onButtonUp(Button.HOME)
-            }
-            SwitchButton("⏺", Color(0xFF404040), Modifier.size(48.dp)) { down ->
-                if (down) viewModel.onButtonDown(Button.CAPTURE)
-                else viewModel.onButtonUp(Button.CAPTURE)
-            }
-        }
-    }
-}
-
-// ─── マクロコントロール ───────────────────────────────────
-@Composable
-fun MacroControls(
-    macroStatus: MacroStatus,
-    savedMacros: List<String>,
+fun MacroPanel(
+    status: MacroStatus,
+    macros: List<String>,
     onStartRec: () -> Unit,
-    onStopRec: () -> Unit,
-    onPlay: (String) -> Unit,
-    onStop: () -> Unit,
-    onDelete: (String) -> Unit,
-    viewModel: MainViewModel
+    onStopRec:  () -> Unit,
+    onPlay:     (String) -> Unit,
+    onStop:     () -> Unit,
+    onDelete:   (String) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(SwitchGray)
+            .background(PANEL)
             .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         Text("マクロ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-
-        // 録画ボタン
-        when (macroStatus) {
-            MacroStatus.IDLE -> {
+        when (status) {
+            MacroStatus.IDLE ->
                 Button(
                     onClick = onStartRec,
-                    colors = ButtonDefaults.buttonColors(containerColor = Recording),
-                    modifier = Modifier.fillMaxWidth().height(36.dp)
-                ) {
-                    Text("● 録画開始", fontSize = 12.sp)
-                }
-            }
-            MacroStatus.RECORDING -> {
+                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = ORANGE)
+                ) { Text("● 録画開始", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            MacroStatus.RECORDING ->
                 Button(
                     onClick = onStopRec,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C)),
-                    modifier = Modifier.fillMaxWidth().height(36.dp)
-                ) {
-                    Text("■ 録画停止・保存", fontSize = 12.sp)
-                }
-            }
-            MacroStatus.PLAYING -> {
+                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C))
+                ) { Text("■ 録画停止・保存", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            MacroStatus.PLAYING ->
                 Button(
                     onClick = onStop,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
-                    modifier = Modifier.fillMaxWidth().height(36.dp)
-                ) {
-                    Text("■ 再生停止", fontSize = 12.sp)
-                }
-            }
+                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
+                ) { Text("■ 再生停止", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
         }
-
-        // 保存済みマクロ一覧
-        if (savedMacros.isNotEmpty()) {
-            savedMacros.take(3).forEach { name ->
+        if (macros.isEmpty()) {
+            Text("マクロなし", color = Color(0xFF505050), fontSize = 11.sp)
+        } else {
+            macros.take(4).forEach { name ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        name,
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(
-                        onClick = { onPlay(name) },
-                        modifier = Modifier.height(28.dp)
-                    ) {
-                        Text("▶", color = Connected, fontSize = 12.sp)
+                    Text(name, color = Color.White, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { onPlay(name) }, contentPadding = PaddingValues(4.dp)) {
+                        Text("▶", color = GREEN, fontSize = 14.sp)
                     }
-                    TextButton(
-                        onClick = { onDelete(name) },
-                        modifier = Modifier.height(28.dp)
-                    ) {
-                        Text("✕", color = Disconnected, fontSize = 12.sp)
+                    TextButton(onClick = { onDelete(name) }, contentPadding = PaddingValues(4.dp)) {
+                        Text("✕", color = RED, fontSize = 14.sp)
                     }
                 }
             }
-        } else {
-            Text("マクロなし", color = Color(0xFF666666), fontSize = 11.sp)
         }
     }
 }
 
-// ─── 十字キーコンポーネント ───────────────────────────────
+// ─── アナログスティック ───────────────────────────────────
 @Composable
-fun DPad(onDirection: (Hat) -> Unit) {
-    Box(
-        modifier = Modifier.size(96.dp),
-        contentAlignment = Alignment.Center
+fun Joystick(accentColor: Color, onMove: (Int, Int) -> Unit) {
+    var thumbPos by remember { mutableStateOf(Offset.Zero) }
+    val sizeDp   = 88.dp
+
+    Canvas(
+        modifier = Modifier
+            .size(sizeDp)
+            .pointerInput(Unit) {
+                val sizePx = sizeDp.toPx()
+                detectDragGestures(
+                    onDragStart = { pos ->
+                        thumbPos = clampStick(pos, sizePx)
+                        val (bx, by) = stickToBytes(thumbPos, sizePx)
+                        onMove(bx, by)
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        thumbPos = clampStick(change.position, sizePx)
+                        val (bx, by) = stickToBytes(thumbPos, sizePx)
+                        onMove(bx, by)
+                    },
+                    onDragEnd    = { thumbPos = Offset.Zero; onMove(128, 128) },
+                    onDragCancel = { thumbPos = Offset.Zero; onMove(128, 128) }
+                )
+            }
+            .pointerInput(Unit) {
+                val sizePx = sizeDp.toPx()
+                detectTapGestures(onPress = { pos ->
+                    thumbPos = clampStick(pos, sizePx)
+                    val (bx, by) = stickToBytes(thumbPos, sizePx)
+                    onMove(bx, by)
+                    tryAwaitRelease()
+                    thumbPos = Offset.Zero
+                    onMove(128, 128)
+                })
+            }
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            SwitchButton("▲", BtnGray, Modifier.size(32.dp)) { down ->
-                onDirection(if (down) Hat.UP else Hat.NEUTRAL)
-            }
-            Row {
-                SwitchButton("◀", BtnGray, Modifier.size(32.dp)) { down ->
-                    onDirection(if (down) Hat.LEFT else Hat.NEUTRAL)
-                }
-                Box(modifier = Modifier.size(32.dp).background(SwitchGray))
-                SwitchButton("▶", BtnGray, Modifier.size(32.dp)) { down ->
-                    onDirection(if (down) Hat.RIGHT else Hat.NEUTRAL)
-                }
-            }
-            SwitchButton("▼", BtnGray, Modifier.size(32.dp)) { down ->
-                onDirection(if (down) Hat.DOWN else Hat.NEUTRAL)
-            }
+        val cx      = size.width  / 2f
+        val cy      = size.height / 2f
+        val baseR   = size.width  / 2f - 3f
+        val thumbR  = size.width  / 5.5f
+        val isActive = thumbPos != Offset.Zero
+
+        // ベース円（外枠）
+        drawCircle(color = Color(0xFF252525), radius = baseR, center = Offset(cx, cy))
+        // アクセントリング
+        drawCircle(
+            color  = accentColor.copy(alpha = if (isActive) 0.6f else 0.25f),
+            radius = baseR,
+            center = Offset(cx, cy),
+            style  = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f)
+        )
+        // 内側ガイド円
+        drawCircle(
+            color  = Color(0xFF303030),
+            radius = baseR * 0.5f,
+            center = Offset(cx, cy),
+            style  = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f)
+        )
+        // 十字ガイド線
+        drawLine(Color(0xFF2A2A2A), Offset(cx - baseR * 0.45f, cy), Offset(cx + baseR * 0.45f, cy), strokeWidth = 1f)
+        drawLine(Color(0xFF2A2A2A), Offset(cx, cy - baseR * 0.45f), Offset(cx, cy + baseR * 0.45f), strokeWidth = 1f)
+
+        // サムスティック
+        drawCircle(
+            color  = if (isActive) accentColor else Color(0xFF484848),
+            radius = thumbR,
+            center = Offset(cx + thumbPos.x, cy + thumbPos.y)
+        )
+        // サム内側ハイライト
+        drawCircle(
+            color  = Color.White.copy(alpha = if (isActive) 0.25f else 0.1f),
+            radius = thumbR * 0.45f,
+            center = Offset(cx + thumbPos.x - thumbR * 0.15f, cy + thumbPos.y - thumbR * 0.15f)
+        )
+    }
+}
+
+private fun clampStick(pos: Offset, sizePx: Float): Offset {
+    val cx   = sizePx / 2f
+    val cy   = sizePx / 2f
+    val maxR = sizePx / 2f * 0.70f
+    val dx   = pos.x - cx
+    val dy   = pos.y - cy
+    val dist = sqrt(dx * dx + dy * dy)
+    val r    = min(dist, maxR)
+    val a    = atan2(dy, dx)
+    return Offset((r * cos(a)), (r * sin(a)))
+}
+
+private fun stickToBytes(offset: Offset, sizePx: Float): Pair<Int, Int> {
+    val maxR = sizePx / 2f * 0.70f
+    val bx   = ((offset.x / maxR) * 127f + 128f).toInt().coerceIn(0, 255)
+    val by   = ((offset.y / maxR) * 127f + 128f).toInt().coerceIn(0, 255)
+    return Pair(bx, by)
+}
+
+// ─── 十字キー ─────────────────────────────────────────────
+@Composable
+fun DPad(onDir: (Hat) -> Unit) {
+    val btnSize = 34.dp
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        NxBtn("▲", GRAY, Modifier.size(btnSize)) { d -> onDir(if (d) Hat.UP    else Hat.NEUTRAL) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NxBtn("◀", GRAY, Modifier.size(btnSize)) { d -> onDir(if (d) Hat.LEFT  else Hat.NEUTRAL) }
+            Box(Modifier.size(btnSize).background(Color(0xFF181818)))
+            NxBtn("▶", GRAY, Modifier.size(btnSize)) { d -> onDir(if (d) Hat.RIGHT else Hat.NEUTRAL) }
         }
+        NxBtn("▼", GRAY, Modifier.size(btnSize)) { d -> onDir(if (d) Hat.DOWN  else Hat.NEUTRAL) }
     }
 }
 
 // ─── ABXYボタン ───────────────────────────────────────────
 @Composable
-fun ABXYPad(viewModel: MainViewModel) {
-    Box(
-        modifier = Modifier.size(96.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            SwitchButton("X", BtnX, Modifier.size(32.dp)) { down ->
-                if (down) viewModel.onButtonDown(Button.X) else viewModel.onButtonUp(Button.X)
-            }
-            Row {
-                SwitchButton("Y", BtnY, Modifier.size(32.dp)) { down ->
-                    if (down) viewModel.onButtonDown(Button.Y) else viewModel.onButtonUp(Button.Y)
-                }
-                Box(modifier = Modifier.size(32.dp).background(SwitchGray))
-                SwitchButton("A", BtnA, Modifier.size(32.dp)) { down ->
-                    if (down) viewModel.onButtonDown(Button.A) else viewModel.onButtonUp(Button.A)
-                }
-            }
-            SwitchButton("B", BtnB, Modifier.size(32.dp)) { down ->
-                if (down) viewModel.onButtonDown(Button.B) else viewModel.onButtonUp(Button.B)
-            }
+fun ABXYPad(vm: MainViewModel) {
+    val s = 38.dp
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        NxBtn("X", BTN_X, Modifier.size(s)) { d -> if (d) vm.onButtonDown(Button.X) else vm.onButtonUp(Button.X) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NxBtn("Y", BTN_Y, Modifier.size(s)) { d -> if (d) vm.onButtonDown(Button.Y) else vm.onButtonUp(Button.Y) }
+            Spacer(Modifier.size(s))
+            NxBtn("A", BTN_A, Modifier.size(s)) { d -> if (d) vm.onButtonDown(Button.A) else vm.onButtonUp(Button.A) }
         }
+        NxBtn("B", BTN_B, Modifier.size(s)) { d -> if (d) vm.onButtonDown(Button.B) else vm.onButtonUp(Button.B) }
     }
 }
 
-// ─── 汎用ボタンコンポーネント ─────────────────────────────
+// ─── 汎用ボタン ───────────────────────────────────────────
 @Composable
-fun SwitchButton(
-    label: String,
-    color: Color,
+fun NxBtn(
+    label:    String,
+    color:    Color,
     modifier: Modifier = Modifier,
-    onPress: (Boolean) -> Unit
+    onPress:  (Boolean) -> Unit
 ) {
+    val src     = remember { MutableInteractionSource() }
     var pressed by remember { mutableStateOf(false) }
 
-    Button(
-        onClick = {},
-        modifier = modifier
-            .clip(CircleShape)
-            .defaultMinSize(minWidth = 1.dp, minHeight = 1.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (pressed) color.copy(alpha = 0.6f) else color
-        ),
-        contentPadding = PaddingValues(2.dp),
-        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-            .also { source ->
-                LaunchedEffect(source) {
-                    source.interactions.collect { interaction ->
-                        when (interaction) {
-                            is androidx.compose.foundation.interaction.PressInteraction.Press -> {
-                                pressed = true
-                                onPress(true)
-                            }
-                            is androidx.compose.foundation.interaction.PressInteraction.Release,
-                            is androidx.compose.foundation.interaction.PressInteraction.Cancel -> {
-                                pressed = false
-                                onPress(false)
-                            }
-                        }
-                    }
-                }
+    LaunchedEffect(src) {
+        src.interactions.collect { interaction ->
+            when (interaction) {
+                is PressInteraction.Press   -> { pressed = true;  onPress(true)  }
+                is PressInteraction.Release,
+                is PressInteraction.Cancel  -> { pressed = false; onPress(false) }
             }
+        }
+    }
+
+    Button(
+        onClick           = {},
+        modifier          = modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp),
+        shape             = CircleShape,
+        colors            = ButtonDefaults.buttonColors(
+            containerColor = if (pressed) color.copy(alpha = 0.55f) else color
+        ),
+        contentPadding    = PaddingValues(2.dp),
+        interactionSource = src
     ) {
-        Text(label, color = Color.White, fontSize = 11.sp, maxLines = 1)
+        Text(
+            text       = label,
+            color      = Color.White,
+            fontSize   = 11.sp,
+            maxLines   = 1,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
